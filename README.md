@@ -51,6 +51,10 @@
 
 ![批量改图](docs/批量改图.png)
 
+### 历史记录
+
+![历史记录](docs/历史记录.png)
+
 ## 技术栈
 
 - **前端**: Vue 3 + Vite + TailwindCSS
