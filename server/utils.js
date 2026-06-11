@@ -1,0 +1,70 @@
+import fs from 'fs/promises'
+import path from 'path'
+
+export const sizes = ['1024x1024', '1536x1024', '1024x1536', '2048x2048', '2160x3840', '3840x2160']
+export const qualities = ['low', 'medium', 'high']
+export const formats = ['png', 'jpeg', 'webp']
+
+export function assertEnum(value, list, fallback) {
+  return list.includes(value) ? value : fallback
+}
+
+export async function saveBase64Image(b64, format = 'png') {
+  const safeFormat = assertEnum(format, formats, 'png')
+  const dir = process.env.UPLOAD_DIR || 'uploads'
+  await fs.mkdir(dir, { recursive: true })
+  const name = `${Date.now()}-${Math.random().toString(16).slice(2)}.${safeFormat}`
+  const file = path.join(dir, name)
+  await fs.writeFile(file, Buffer.from(b64, 'base64'))
+  return `/uploads/${name}`
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryable(error) {
+  const message = error?.message || ''
+  return message.includes('超时') || message.includes('暂时不可用') || message.includes('timeout') || message.includes('HTTP 502') || message.includes('HTTP 524')
+}
+
+export async function callImageApi({ baseUrl, apiKey, endpoint, payload }) {
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(300000)
+  })
+  const text = await response.text()
+  let data
+  try { data = JSON.parse(text) } catch { data = { error: text } }
+  if (!response.ok) {
+    if (response.status === 524 || text.includes('Error code 524') || text.includes('A timeout occurred')) {
+      throw new Error('上游接口处理超时，请降低质量/尺寸后重试，或稍后再试')
+    }
+    if (response.status === 502) throw new Error('上游接口暂时不可用，请稍后重试')
+    const message = data?.error?.message || data?.error || `HTTP ${response.status}`
+    const clean = typeof message === 'string' ? message.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : JSON.stringify(message)
+    throw new Error(clean.slice(0, 300))
+  }
+  return data
+}
+
+export async function callImageApiWithRetry(args, retries = 2, onStatus = () => {}) {
+  let lastError
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      onStatus({ type: 'attempt', attempt: attempt + 1, max: retries + 1, baseUrl: args.baseUrl })
+      return await callImageApi(args)
+    } catch (error) {
+      lastError = error
+      if (attempt === retries || !isRetryable(error)) throw error
+      onStatus({ type: 'retry', attempt: attempt + 1, nextAttempt: attempt + 2, max: retries + 1, baseUrl: args.baseUrl, error: error.message })
+      await sleep(8000 * (attempt + 1))
+    }
+  }
+  throw lastError
+}
