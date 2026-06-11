@@ -2,6 +2,30 @@
 
 基于 GPT-Image-2 的 AI 图像生成与编辑 Web 应用，支持用户认证、单图/批量编辑、内容转换等功能。
 
+## 兼容 OpenAI 格式
+
+本项目完全兼容 OpenAI Images API 格式，只需在「设置」页填入你的 `Base URL` 和 `API Key` 即可使用。
+
+支持的 API 端点：
+- `POST {base_url}/images/generations` — 文字生成图片
+- `POST {base_url}/images/edits` — 图片编辑（支持多图输入）
+
+请求格式示例：
+```json
+{
+  "model": "gpt-image-2",
+  "prompt": "your prompt here",
+  "images": [{"image_url": "data:image/png;base64,..."}],
+  "size": "1024x1024",
+  "quality": "low"
+}
+```
+
+任何兼容 OpenAI Images API 的服务都可以直接使用，包括但不限于：
+- OpenAI 官方 API
+- Azure OpenAI
+- 第三方兼容服务
+
 ## 功能特性
 
 - **用户系统** - 注册/登录，JWT 认证
